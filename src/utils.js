@@ -161,3 +161,14 @@ export function supportsWebKitPresentationMode (video = document.createElement('
   const notMobile = /iPhone|iPod/.test(navigator.userAgent) === false
   return video.webkitSupportsPresentationMode && typeof video.webkitSetPresentationMode === 'function' && notMobile
 }
+
+// for onSeekEvent on Youtube player
+export function isSubArrayEnd (A, B) {
+  if (A.length < B.length) return false
+  let i = 0
+  while (i < B.length) {
+    if (A[A.length - i - 1] !== B[B.length - i - 1]) return false
+    i++
+  }
+  return true
+}

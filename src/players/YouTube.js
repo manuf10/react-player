@@ -1,6 +1,6 @@
 import React, { Component } from 'react'
 
-import { callPlayer, getSDK, parseStartTime, parseEndTime } from '../utils'
+import { callPlayer, getSDK, parseStartTime, parseEndTime, isSubArrayEnd } from '../utils'
 import { canPlay, MATCH_URL_YOUTUBE } from '../patterns'
 
 const SDK_URL = 'https://www.youtube.com/iframe_api'
@@ -15,6 +15,7 @@ export default class YouTube extends Component {
   static displayName = 'YouTube'
   static canPlay = canPlay.youtube
   callPlayer = callPlayer
+  _sequence = []
 
   componentDidMount () {
     this.props.onMount && this.props.onMount(this)
@@ -107,7 +108,7 @@ export default class YouTube extends Component {
 
   onStateChange = (event) => {
     const { data } = event
-    const { onPlay, onPause, onBuffer, onBufferEnd, onEnded, onReady, loop, config: { playerVars, onUnstarted } } = this.props
+    const { onPlay, onPause, onBuffer, onBufferEnd, onEnded, onReady, onSeek, loop, config: { playerVars, onUnstarted } } = this.props
     const { UNSTARTED, PLAYING, PAUSED, BUFFERING, ENDED, CUED } = window[SDK_GLOBAL].PlayerState
     if (data === UNSTARTED) onUnstarted()
     if (data === PLAYING) {
@@ -129,6 +130,52 @@ export default class YouTube extends Component {
       onEnded()
     }
     if (data === CUED) onReady()
+
+    // onSeek
+    if (onSeek) this.handleOnSeek(data, onSeek)
+  };
+
+  handleOnSeek (data, onSeek) {
+    const { PAUSED, BUFFERING } = window[SDK_GLOBAL].PlayerState
+    // Update sequence with current state change event
+    this._sequence = [...this._sequence, data]
+    if (
+      data === BUFFERING &&
+      isSubArrayEnd(this._sequence, [PAUSED, BUFFERING])
+    ) {
+      onSeek(this.getCurrentTime()) // Mouse seek
+      this._sequence = [] // Reset event sequence
+    } else if (
+      data === BUFFERING &&
+      isSubArrayEnd(this._sequence, [BUFFERING])
+    ) {
+      onSeek(this.getCurrentTime()) // Arrow keys seek
+      this._sequence = [] // Reset event sequence
+    } else if (data === PAUSED) {
+      const seekTimer = setInterval(() => { // for every 750 ms check if paused and the time is changed
+        if (
+          this.prevTime !== this.getCurrentTime() && // Paused seek
+          isSubArrayEnd(this._sequence, [PAUSED])
+        ) {
+          onSeek(this.getCurrentTime())
+          // this._sequence = []
+          this.prevTime = this.getCurrentTime()
+        }
+      }, 750)
+      this._seekTimer = seekTimer
+    } else {
+      clearTimeout(this._timer) // Cancel previous event
+      clearInterval(this._seekTimer)
+      if (data !== BUFFERING) {
+        // If we're not buffering,
+        const timeout = setTimeout(function () {
+          // Start timer
+          this._sequence = [] // Reset event sequence
+        }, 250)
+        this._timer = timeout
+      }
+    }
+    this.prevTime = this.getCurrentTime()
   }
 
   play () {
